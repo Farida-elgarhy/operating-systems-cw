@@ -1,81 +1,115 @@
+// client.c
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include <sys/types.h>
-#include <sys/socket.h>
 
 #define PORT 8080
 #define BUFFER_SIZE 1024
 
+// Helper to trim newline
+void remove_newline(char *str) {
+    for (int i = 0; str[i] != '\0'; i++) {
+        if (str[i] == '\n') {
+            str[i] = '\0';
+            break;
+        }
+    }
+}
+
 int main() {
     int sock;
     struct sockaddr_in server_address;
-    char buffer[BUFFER_SIZE];
-    char username[50], password[50], credentials[BUFFER_SIZE];
-    int bytes_received;
+    char buffer[BUFFER_SIZE] = {0};
+    char username[23], password[23];
+    int bytes;
 
     // Create socket
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
-        printf("Socket creation failed.\n");
-        return 1;
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
     }
 
-    // Set server address
+    // Define server address
     server_address.sin_family = AF_INET;
     server_address.sin_port = htons(PORT);
-    server_address.sin_addr.s_addr = INADDR_ANY;
+    server_address.sin_addr.s_addr = INADDR_ANY; // Connect to localhost
+    
 
     // Connect to server
     if (connect(sock, (struct sockaddr*)&server_address, sizeof(server_address)) < 0) {
-        printf("Connection failed.\n");
-        return 1;
+        perror("Connection failed");
+        close(sock);
+        exit(EXIT_FAILURE);
     }
 
-    // Send greeting
-    send(sock, "Hello from client", strlen("Hello from client"), 0);
-
-    // Receive greeting from server
-    bytes_received = read(sock, buffer, BUFFER_SIZE);
-    if (bytes_received > 0) {
-        buffer[bytes_received] = '\0';
-        printf("Server: %s\n", buffer);
-    }
-
-    // Get username and password
-    printf("Enter username: ");
-    scanf("%s", username);
-
-    printf("Enter password: ");
-    scanf("%s", password);
-
-    // Combine username and password
-    snprintf(credentials, sizeof(credentials), "%s %s", username, password);
-    send(sock, credentials, strlen(credentials), 0);
-
-    // Receive authentication result
+    // Step 1: Receive "Enter username:"
     memset(buffer, 0, BUFFER_SIZE);
-    bytes_received = read(sock, buffer, BUFFER_SIZE);
-    if (bytes_received > 0) {
-        buffer[bytes_received] = '\0';
+    bytes = read(sock, buffer, BUFFER_SIZE);
+    if (bytes > 0) {
+        buffer[bytes] = '\0';
+        printf("%s", buffer);
+    } else{
+        perror("Failed to receive username prompt");
+        close(sock);
+        exit(EXIT_FAILURE);
+    }
+
+    // Step 2: Send username
+    fgets(username, sizeof(username), stdin);
+    remove_newline(username);
+    if(send(sock, username, strlen(username), 0)<0){
+        perror("Failed to send username");
+        close(sock);
+        exit(EXIT_FAILURE);   
+    }
+
+    // Step 3: Receive "Enter password:"
+    //memset(buffer, 0, BUFFER_SIZE);
+    bytes = read(sock, buffer, BUFFER_SIZE);
+    if (bytes > 0) {
+        buffer[bytes] = '\0';
+        printf("%s", buffer);
+    }else{
+        perror("Failed to receive password prompt");
+        close(sock);
+        exit(EXIT_FAILURE);
+    }
+
+    // Step 4: Send password
+    fgets(password, sizeof(password), stdin);
+    remove_newline(password);
+    if(send(sock, password, strlen(password), 0)<0){
+        perror("Failed to send password");
+        close(sock);
+        exit(EXIT_FAILURE);
+    }
+
+    // Step 5: Receive authentication response
+    //memset(buffer, 0, BUFFER_SIZE);
+    bytes = read(sock, buffer, BUFFER_SIZE);
+    if (bytes > 0) {
+        buffer[bytes] = '\0';
         printf("Server: %s\n", buffer);
 
-        // Send message if authenticated
         if (strcmp(buffer, "Authentication successful") == 0) {
-            char message[BUFFER_SIZE];
-            printf("Enter a one worded message to server: ");
-            scanf("%s", message);
+            // Step 6: Send message to server
+            printf("Enter message to server: ");
+            fgets(buffer, BUFFER_SIZE, stdin);
+            remove_newline(buffer);
+            send(sock, buffer, strlen(buffer), 0);
 
-            send(sock, message, strlen(message), 0);
-
-            // Receive acknowledgment
-            memset(buffer, 0, BUFFER_SIZE);
-            read(sock, buffer, BUFFER_SIZE);
-            printf("Server: %s\n", buffer);
+            // Step 7: Receive acknowledgment
+            //memset(buffer, 0, BUFFER_SIZE);
+            bytes = read(sock, buffer, BUFFER_SIZE);
+            if (bytes > 0) {
+                buffer[bytes] = '\0';
+                printf("Server: %s\n", buffer);
+            }
         }
-    }
+    } 
 
     // Close socket
     close(sock);
